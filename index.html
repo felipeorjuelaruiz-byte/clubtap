@@ -599,20 +599,20 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x060a18);
 
-const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 100);
 let zoomDist = 3.1;
-camera.position.set(0,0,zoomDist);
-camera.lookAt(0,0,0);
 
 const globeGroup = new THREE.Group();
 scene.add(globeGroup);
 
 const texLoader = new THREE.TextureLoader();
 const earthTex = texLoader.load("earth.jpg");
-earthTex.anisotropy = 4;
+earthTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+earthTex.minFilter = THREE.LinearMipmapLinearFilter;
+earthTex.magFilter = THREE.LinearFilter;
 
 const globeMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(1, 64, 64),
+  new THREE.SphereGeometry(1, 96, 96),
   new THREE.MeshBasicMaterial({map:earthTex})
 );
 globeGroup.add(globeMesh);
@@ -713,19 +713,34 @@ function clearArc(){
   if(arcLine){ globeGroup.remove(arcLine); arcLine.geometry.dispose(); arcLine.material.dispose(); arcLine=null; }
 }
 
-/* rotation + zoom control */
-let rotY = 0.4, rotX = -0.25;
-globeGroup.rotation.order = "YXZ";
+/* Rotation + zoom control, modeled on THREE.OrbitControls (the same library
+   MapTap's globe uses): the camera orbits a fixed globe in spherical
+   coordinates (theta = azimuth, phi = polar angle from the north pole),
+   phi is only kept clear of the exact poles (no artificial pitch limit —
+   you can spin all the way over the top like a real globe), drag input
+   accumulates into a pending delta that is eased in every frame via
+   dampingFactor rather than applied instantly, and rotateSpeed itself
+   scales down at close zoom so precise taps don't overshoot. */
+let camTheta = -0.55, camPhi = 1.15;
+const PHI_EPS = 0.001;
 let autoRotate = true;
 let dragging = false, dragMoved = false, lastX=0, lastY=0, downX=0, downY=0, downTime=0;
-const ROT_SPEED = 3.2;
+let deltaTheta = 0, deltaPhi = 0;
+const DAMPING = 0.1;
+const ROTATE_REF_FLOOR = 1.35, ROTATE_REF_SPAN = 1.45;
+const MIN_ROTATE_SPEED = 0.01, BASE_ROTATE_SPEED = 0.5;
 
-function applyRotation(){
-  rotX = THREE.MathUtils.clamp(rotX, -1.45, 1.45);
-  globeGroup.rotation.y = rotY;
-  globeGroup.rotation.x = rotX;
+function currentRotateSpeed(){
+  const t = THREE.MathUtils.clamp((zoomDist-ROTATE_REF_FLOOR)/ROTATE_REF_SPAN, 0, 1);
+  return MIN_ROTATE_SPEED + t*(BASE_ROTATE_SPEED-MIN_ROTATE_SPEED);
 }
-applyRotation();
+function updateCameraFromSpherical(){
+  camPhi = THREE.MathUtils.clamp(camPhi, PHI_EPS, Math.PI-PHI_EPS);
+  const sinPhiR = Math.sin(camPhi)*zoomDist;
+  camera.position.set(sinPhiR*Math.sin(camTheta), Math.cos(camPhi)*zoomDist, sinPhiR*Math.cos(camTheta));
+  camera.lookAt(0,0,0);
+}
+updateCameraFromSpherical();
 
 function ndcFromEvent(clientX, clientY){
   const rect = canvas.getBoundingClientRect();
@@ -766,10 +781,10 @@ canvas.addEventListener("pointermove", function(e){
   if(!dragging) return;
   const dx = e.clientX-lastX, dy = e.clientY-lastY;
   if(Math.abs(e.clientX-downX) > 5 || Math.abs(e.clientY-downY) > 5) dragMoved = true;
-  const w = canvas.clientWidth || 1;
-  rotY += (dx/w)*ROT_SPEED;
-  rotX += (dy/w)*ROT_SPEED;
-  applyRotation();
+  const h = canvas.clientHeight || 1;
+  const speed = currentRotateSpeed();
+  deltaTheta -= 2*Math.PI*(dx/h)*speed;
+  deltaPhi -= 2*Math.PI*(dy/h)*speed;
   lastX = e.clientX; lastY = e.clientY;
 });
 canvas.addEventListener("pointerup", function(e){
@@ -783,7 +798,7 @@ canvas.addEventListener("pointercancel", function(){ dragging = false; });
 
 canvas.addEventListener("wheel", function(e){
   e.preventDefault();
-  zoomDist = THREE.MathUtils.clamp(zoomDist + e.deltaY*0.0018*zoomDist, 1.55, 5.5);
+  zoomDist = THREE.MathUtils.clamp(zoomDist + e.deltaY*0.0018*zoomDist, 1.35, 5.5);
 }, {passive:false});
 
 let pinchDist = null;
@@ -796,7 +811,7 @@ canvas.addEventListener("touchmove", function(e){
   if(e.touches.length===2 && pinchDist!=null){
     const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
     const ratio = pinchDist/d;
-    zoomDist = THREE.MathUtils.clamp(zoomDist*ratio, 1.55, 5.5);
+    zoomDist = THREE.MathUtils.clamp(zoomDist*ratio, 1.35, 5.5);
     pinchDist = d;
   }
 }, {passive:true});
@@ -804,8 +819,8 @@ canvas.addEventListener("touchend", function(e){
   if(e.touches.length<2) pinchDist = null;
 });
 
-document.getElementById("zoomIn").addEventListener("click", ()=>{ zoomDist = THREE.MathUtils.clamp(zoomDist-0.5,1.55,5.5); });
-document.getElementById("zoomOut").addEventListener("click", ()=>{ zoomDist = THREE.MathUtils.clamp(zoomDist+0.5,1.55,5.5); });
+document.getElementById("zoomIn").addEventListener("click", ()=>{ zoomDist = THREE.MathUtils.clamp(zoomDist-0.5,1.35,5.5); });
+document.getElementById("zoomOut").addEventListener("click", ()=>{ zoomDist = THREE.MathUtils.clamp(zoomDist+0.5,1.35,5.5); });
 
 function resize(){
   const w = window.innerWidth, h = window.innerHeight;
@@ -818,9 +833,15 @@ resize();
 
 function animate(){
   requestAnimationFrame(animate);
-  if(autoRotate){ rotY += 0.0016; applyRotation(); }
-  camera.position.set(0,0,zoomDist);
-  camera.lookAt(0,0,0);
+  if(autoRotate){
+    camTheta += 0.0016;
+  } else {
+    camTheta += deltaTheta*DAMPING;
+    camPhi += deltaPhi*DAMPING;
+    deltaTheta *= (1-DAMPING);
+    deltaPhi *= (1-DAMPING);
+  }
+  updateCameraFromSpherical();
   const pulse = 0.55+0.45*Math.sin(performance.now()*0.004);
   if(guessMarker.visible) guessMarker.userData.ring.material.opacity = 0.25+0.4*pulse;
   if(actualMarker.visible) actualMarker.userData.ring.material.opacity = 0.25+0.4*pulse;
