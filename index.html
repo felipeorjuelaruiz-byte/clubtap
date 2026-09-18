@@ -721,8 +721,9 @@ let dragging = false, dragMoved = false, lastX=0, lastY=0, downX=0, downY=0, dow
 const ROT_SPEED = 3.2;
 
 function applyRotation(){
+  rotX = THREE.MathUtils.clamp(rotX, -1.45, 1.45);
   globeGroup.rotation.y = rotY;
-  globeGroup.rotation.x = THREE.MathUtils.clamp(rotX, -1.45, 1.45);
+  globeGroup.rotation.x = rotX;
 }
 applyRotation();
 
