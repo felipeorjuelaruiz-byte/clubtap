@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ClubTap</title>
+<meta name="description" content="Adiviná dónde queda cada club de fútbol del mundo girando un globo 3D — puntaje por cercanía, reto diario y modo libre.">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root{color-scheme:dark;}
+[hidden]{display:none!important;}
+
+:root{
+  --bg:#060a18;
+  --surface:#101a37;
+  --surface-2:#182349;
+  --surface-3:#1f2c58;
+  --pitch:#22c17c;
+  --pitch-dim:#1a8f5c;
+  --ball:#ffcf4d;
+  --guess:#ff9d4d;
+  --text:#f3f6ff;
+  --muted:#93a0c9;
+  --danger:#ff5d6c;
+  --border:rgba(255,255,255,0.08);
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  overflow:hidden;
+  overscroll-behavior:none;
+}
+h1,h2,h3,.display,.score-num,.big-num{
+  font-family:'Teko',system-ui,sans-serif;
+  font-weight:600;
+  letter-spacing:0.01em;
+}
+
+#stage{position:fixed; inset:0;}
+#globeCanvas{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none;}
+
+.hud{
+  position:fixed; left:0; right:0; top:0;
+  padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 10px;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px;
+  pointer-events:none;
+  z-index:5;
+}
+.hud[hidden]{display:none!important;}
+.pill{
+  pointer-events:auto;
+  background:rgba(16,26,55,0.72);
+  backdrop-filter:blur(10px);
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:6px 14px;
+  display:flex; align-items:center; gap:8px;
+  font-size:13px; color:var(--muted);
+}
+.pill b{color:var(--text); font-weight:700;}
+.score-pill .score-num{font-size:22px; line-height:1; color:var(--ball);}
+.menu-btn{
+  pointer-events:auto;
+  width:38px; height:38px; border-radius:50%;
+  background:rgba(16,26,55,0.72);
+  backdrop-filter:blur(10px);
+  border:1px solid var(--border);
+  color:var(--text);
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; cursor:pointer;
+}
+
+/* Start screen */
+#startScreen{
+  position:fixed; inset:0; z-index:20;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:24px calc(16px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(16px + env(safe-area-inset-left,0px));
+  text-align:center;
+  background:radial-gradient(ellipse at 50% 20%, rgba(34,193,124,0.14), transparent 60%);
+}
+.logo-wrap{display:flex; align-items:baseline; gap:2px; margin-bottom:6px;}
+.logo-wrap .ball-ico{font-size:34px; transform:translateY(2px);}
+#startScreen h1{font-size:64px; margin:0; line-height:0.9;}
+#startScreen h1 .tap{color:var(--pitch);}
+.tagline{color:var(--muted); font-size:15px; margin:8px 0 28px; max-width:320px;}
+.mode-card{
+  width:100%; max-width:360px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:18px;
+  margin-bottom:12px;
+  text-align:left;
+}
+.mode-card h3{margin:0 0 4px; font-size:24px;}
+.mode-card p{margin:0 0 14px; color:var(--muted); font-size:13px; line-height:1.4;}
+.btn{
+  appearance:none; border:none; cursor:pointer;
+  border-radius:12px; padding:13px 18px;
+  font-family:'Inter'; font-weight:700; font-size:15px;
+  width:100%;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.btn-primary{background:var(--pitch); color:#04160e;}
+.btn-primary:active{background:var(--pitch-dim);}
+.btn-secondary{background:var(--surface-3); color:var(--text); border:1px solid var(--border);}
+.btn-ghost{background:transparent; color:var(--muted); border:1px solid var(--border);}
+.btn[disabled]{opacity:0.5; cursor:default;}
+.stat-row{display:flex; gap:10px; width:100%; max-width:360px;}
+.stat-box{
+  flex:1; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:10px; text-align:center;
+}
+.stat-box .big-num{font-size:30px; color:var(--ball); line-height:1;}
+.stat-box .lbl{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-top:2px;}
+.daily-done{font-size:12px; color:var(--pitch); font-weight:600; margin-top:6px;}
+
+/* Clue card */
+#clueCard{
+  position:fixed; left:16px; right:16px;
+  bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  z-index:5;
+  background:rgba(16,26,55,0.85);
+  backdrop-filter:blur(14px);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:16px;
+  max-width:420px; margin:0 auto;
+}
+.clue-top{display:flex; align-items:center; gap:12px;}
+.badge{
+  width:52px; height:52px; border-radius:14px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Teko'; font-weight:700; font-size:24px; color:#fff;
+  flex:none;
+  box-shadow: inset 0 -4px 10px rgba(0,0,0,0.25), inset 0 2px 4px rgba(255,255,255,0.25);
+}
+.clue-text{flex:1; min-width:0;}
+.clue-text .club-name{font-size:20px; font-weight:800; line-height:1.15;}
+.clue-text .club-country{color:var(--muted); font-size:12.5px; margin-top:2px;}
+.hint{color:var(--muted); font-size:12px; margin:10px 0 12px; display:flex; align-items:center; gap:6px;}
+.hint.confirmed{color:var(--pitch);}
+
+/* Result panel */
+#resultPanel{
+  position:fixed; left:16px; right:16px;
+  bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  z-index:6; max-width:420px; margin:0 auto;
+  background:rgba(16,26,55,0.9);
+  backdrop-filter:blur(14px);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:18px;
+}
+#resultPanel[hidden]{display:none!important;}
+.result-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
+.result-head .club-name{font-size:19px; font-weight:800;}
+.result-pts{font-size:34px; color:var(--ball); line-height:1;}
+.result-dist{color:var(--muted); font-size:13.5px; margin-bottom:14px;}
+.result-dist b{color:var(--text);}
+.meter{height:8px; border-radius:6px; background:var(--surface-3); overflow:hidden; margin-bottom:14px;}
+.meter-fill{height:100%; background:linear-gradient(90deg,var(--danger),var(--ball),var(--pitch)); border-radius:6px;}
+
+/* Toast */
+#toast{
+  position:fixed; left:50%; top:calc(78px + env(safe-area-inset-top,0px));
+  transform:translate(-50%,-8px);
+  background:rgba(16,26,55,0.92); border:1px solid var(--border);
+  padding:10px 16px; border-radius:12px; font-size:13px; color:var(--muted);
+  z-index:8; opacity:0; transition:opacity .3s ease, transform .3s ease;
+  max-width:min(340px, calc(100vw - 32px)); text-align:center;
+  pointer-events:none;
+}
+#toast.show{opacity:1; transform:translate(-50%,0);}
+
+/* Summary */
+#summaryScreen{
+  position:fixed; inset:0; z-index:25;
+  background:rgba(6,10,24,0.94); backdrop-filter:blur(6px);
+  display:flex; align-items:flex-end; justify-content:center;
+}
+#summaryScreen[hidden]{display:none!important;}
+.summary-sheet{
+  width:100%; max-width:480px;
+  background:var(--surface);
+  border-radius:24px 24px 0 0;
+  padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px));
+  max-height:88vh; overflow-y:auto;
+  border-top:1px solid var(--border);
+}
+.summary-sheet h2{font-size:22px; margin:0 0 2px; text-align:center;}
+.rank-line{text-align:center; color:var(--pitch); font-weight:700; font-size:14px; margin-bottom:6px;}
+.total-score{text-align:center; font-size:58px; color:var(--ball); line-height:1; margin:6px 0 2px;}
+.total-out-of{text-align:center; color:var(--muted); font-size:12.5px; margin-bottom:18px;}
+.round-row{
+  display:flex; align-items:center; gap:10px;
+  padding:9px 0; border-bottom:1px solid var(--border);
+}
+.round-row:last-of-type{border-bottom:none;}
+.round-badge{width:34px;height:34px;border-radius:10px; display:flex;align-items:center;justify-content:center; font-family:'Teko'; font-weight:700; font-size:16px; color:#fff; flex:none;}
+.round-info{flex:1; min-width:0;}
+.round-info .rn{font-size:14px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.round-info .rd{font-size:11.5px; color:var(--muted);}
+.round-pts{font-family:'Teko'; font-size:22px; color:var(--ball);}
+.summary-actions{display:flex; flex-direction:column; gap:10px; margin-top:18px;}
+#shareBtn{margin-top:16px;}
+.share-box{margin-top:10px; display:flex; flex-direction:column; gap:8px;}
+.share-box[hidden]{display:none!important;}
+#shareText{
+  width:100%; resize:none;
+  background:var(--surface-3); color:var(--text);
+  border:1px solid var(--border); border-radius:12px;
+  padding:12px; font-family:'Inter'; font-size:14px; line-height:1.5;
+}
+
+.zoom-controls{
+  position:fixed; right:16px; bottom:calc(196px + env(safe-area-inset-bottom,0px));
+  z-index:5; display:flex; flex-direction:column; gap:8px;
+}
+.zoom-controls[hidden]{display:none!important;}
+.zoom-btn{
+  width:38px; height:38px; border-radius:12px;
+  background:rgba(16,26,55,0.72); backdrop-filter:blur(10px);
+  border:1px solid var(--border); color:var(--text);
+  font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+
+@media (max-width:400px){
+  #startScreen h1{font-size:52px;}
+  .total-score{font-size:48px;}
+}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="globeCanvas"></canvas>
+</div>
+
+<div class="hud" id="hud" hidden>
+  <div class="pill" id="roundPill">Ronda <b><span id="roundNow">1</span>/<span id="roundTotal">5</span></b></div>
+  <div class="pill score-pill">Puntos<div class="score-num" id="scoreNow">0</div></div>
+</div>
+
+<div class="zoom-controls" id="zoomControls" hidden>
+  <div class="zoom-btn" id="zoomIn">+</div>
+  <div class="zoom-btn" id="zoomOut">&minus;</div>
+</div>
+
+<div id="toast"></div>
+
+<div id="clueCard" hidden>
+  <div class="clue-top">
+    <div class="badge" id="clueBadge">FC</div>
+    <div class="clue-text">
+      <div class="club-name" id="clueName">Club</div>
+      <div class="club-country" id="clueCountry">País</div>
+    </div>
+  </div>
+  <div class="hint" id="clueHint">Arrastrá para girar el globo y tocá para marcar tu respuesta</div>
+  <button class="btn btn-primary" id="confirmBtn" disabled>Confirmar ubicación</button>
+</div>
+
+<div id="resultPanel" hidden>
+  <div class="result-head">
+    <div class="club-name" id="resName">Club</div>
+    <div class="result-pts" id="resPts">0</div>
+  </div>
+  <div class="result-dist" id="resDist">Quedaste a <b>0 km</b></div>
+  <div class="meter"><div class="meter-fill" id="resMeter" style="width:0%"></div></div>
+  <button class="btn btn-primary" id="nextBtn">Siguiente equipo</button>
+</div>
+
+<div id="startScreen">
+  <div class="logo-wrap"><span class="ball-ico">⚽</span></div>
+  <h1>Club<span class="tap">Tap</span></h1>
+  <p class="tagline">¿Cuánto sabés de geografía futbolera? Te mostramos el club, vos marcás la ciudad en el globo.</p>
+
+  <div class="stat-row" style="margin-bottom:18px;">
+    <div class="stat-box"><div class="big-num" id="streakStat">0</div><div class="lbl">Racha</div></div>
+    <div class="stat-box"><div class="big-num" id="bestStat">0</div><div class="lbl">Mejor puntaje</div></div>
+    <div class="stat-box"><div class="big-num" id="playedStat">0</div><div class="lbl">Jugadas</div></div>
+  </div>
+
+  <div class="mode-card">
+    <h3>Reto diario</h3>
+    <p>5 clubes elegidos para hoy. Todo el mundo juega los mismos.</p>
+    <button class="btn btn-primary" id="dailyBtn">Jugar el reto de hoy</button>
+    <div class="daily-done" id="dailyDoneMsg" hidden></div>
+  </div>
+
+  <div class="mode-card">
+    <h3>Modo libre</h3>
+    <p>5 clubes al azar de más de 45 países. Jugá las veces que quieras.</p>
+    <button class="btn btn-secondary" id="freeBtn">Jugar modo libre</button>
+  </div>
+</div>
+
+<div id="summaryScreen" hidden>
+  <div class="summary-sheet">
+    <h2 id="summaryTitle">Resumen</h2>
+    <div class="rank-line" id="rankLine">—</div>
+    <div class="total-score" id="totalScore">0</div>
+    <div class="total-out-of" id="totalOutOf">de 25000 puntos</div>
+    <div id="roundList"></div>
+
+    <button class="btn btn-secondary" id="shareBtn">Compartir resultado 📤</button>
+    <div class="share-box" id="shareBox" hidden>
+      <textarea id="shareText" readonly rows="4"></textarea>
+      <button class="btn btn-primary" id="copyBtn">Copiar</button>
+    </div>
+
+    <div class="summary-actions">
+      <button class="btn btn-primary" id="playAgainBtn">Jugar modo libre</button>
+      <button class="btn btn-ghost" id="backMenuBtn">Volver al menú</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ---------- Data ---------- */
+const CLUBS_RAW = [
+["Arsenal","Inglaterra","Londres",51.5074,-0.1278],
+["Chelsea","Inglaterra","Londres",51.5074,-0.1278],
+["Tottenham Hotspur","Inglaterra","Londres",51.5074,-0.1278],
+["West Ham United","Inglaterra","Londres",51.5074,-0.1278],
+["Manchester United","Inglaterra","Mánchester",53.4808,-2.2426],
+["Manchester City","Inglaterra","Mánchester",53.4808,-2.2426],
+["Liverpool","Inglaterra","Liverpool",53.4084,-2.9916],
+["Everton","Inglaterra","Liverpool",53.4084,-2.9916],
+["Newcastle United","Inglaterra","Newcastle",54.9783,-1.6178],
+["Aston Villa","Inglaterra","Birmingham",52.4862,-1.8904],
+["Leicester City","Inglaterra","Leicester",52.6369,-1.1398],
+["Wolverhampton Wanderers","Inglaterra","Wolverhampton",52.5862,-2.1288],
+["Brighton & Hove Albion","Inglaterra","Brighton",50.8225,-0.1372],
+["Celtic","Escocia","Glasgow",55.8642,-4.2518],
+["Rangers","Escocia","Glasgow",55.8642,-4.2518],
+["Real Madrid","España","Madrid",40.4168,-3.7038],
+["Atlético de Madrid","España","Madrid",40.4168,-3.7038],
+["FC Barcelona","España","Barcelona",41.3874,2.1686],
+["Sevilla FC","España","Sevilla",37.3891,-5.9845],
+["Real Betis","España","Sevilla",37.3891,-5.9845],
+["Valencia CF","España","Valencia",39.4699,-0.3763],
+["Villarreal CF","España","Villarreal",39.9375,-0.1003],
+["Real Sociedad","España","San Sebastián",43.3183,-1.9812],
+["Athletic Club","España","Bilbao",43.2630,-2.9350],
+["Juventus","Italia","Turín",45.0703,7.6869],
+["AC Milan","Italia","Milán",45.4642,9.1900],
+["Inter de Milán","Italia","Milán",45.4642,9.1900],
+["Napoli","Italia","Nápoles",40.8518,14.2681],
+["AS Roma","Italia","Roma",41.9028,12.4964],
+["Lazio","Italia","Roma",41.9028,12.4964],
+["Fiorentina","Italia","Florencia",43.7696,11.2558],
+["Atalanta","Italia","Bérgamo",45.6983,9.6773],
+["Bayern Múnich","Alemania","Múnich",48.1351,11.5820],
+["Borussia Dortmund","Alemania","Dortmund",51.5136,7.4653],
+["RB Leipzig","Alemania","Leipzig",51.3397,12.3731],
+["Bayer Leverkusen","Alemania","Leverkusen",51.0459,6.9853],
+["Schalke 04","Alemania","Gelsenkirchen",51.5177,7.0857],
+["Werder Bremen","Alemania","Bremen",53.0793,8.8017],
+["Borussia Mönchengladbach","Alemania","Mönchengladbach",51.1805,6.4428],
+["Hamburgo SV","Alemania","Hamburgo",53.5511,9.9937],
+["VfB Stuttgart","Alemania","Stuttgart",48.7758,9.1829],
+["Paris Saint-Germain","Francia","París",48.8566,2.3522],
+["Olympique de Marsella","Francia","Marsella",43.2965,5.3698],
+["Olympique de Lyon","Francia","Lyon",45.7640,4.8357],
+["AS Mónaco","Francia","Mónaco",43.7384,7.4246],
+["LOSC Lille","Francia","Lille",50.6292,3.0573],
+["Stade Rennais","Francia","Rennes",48.1173,-1.6778],
+["OGC Nice","Francia","Niza",43.7102,7.2620],
+["AS Saint-Étienne","Francia","Saint-Étienne",45.4397,4.3872],
+["Benfica","Portugal","Lisboa",38.7223,-9.1393],
+["Sporting CP","Portugal","Lisboa",38.7223,-9.1393],
+["FC Porto","Portugal","Oporto",41.1579,-8.6291],
+["SC Braga","Portugal","Braga",41.5454,-8.4265],
+["Ajax","Países Bajos","Ámsterdam",52.3676,4.9041],
+["PSV Eindhoven","Países Bajos","Eindhoven",51.4416,5.4697],
+["Feyenoord","Países Bajos","Róterdam",51.9244,4.4777],
+["AZ Alkmaar","Países Bajos","Alkmaar",52.6324,4.7534],
+["Anderlecht","Bélgica","Bruselas",50.8503,4.3517],
+["Club Brugge","Bélgica","Brujas",51.2093,3.2247],
+["KRC Genk","Bélgica","Genk",50.9659,5.5008],
+["Galatasaray","Turquía","Estambul",41.0082,28.9784],
+["Fenerbahçe","Turquía","Estambul",41.0082,28.9784],
+["Beşiktaş","Turquía","Estambul",41.0082,28.9784],
+["Trabzonspor","Turquía","Trebisonda",41.0027,39.7168],
+["Spartak Moscú","Rusia","Moscú",55.7558,37.6173],
+["CSKA Moscú","Rusia","Moscú",55.7558,37.6173],
+["Zenit San Petersburgo","Rusia","San Petersburgo",59.9311,30.3609],
+["Dinamo Kiev","Ucrania","Kiev",50.4501,30.5234],
+["Shakhtar Donetsk","Ucrania","Donetsk",48.0159,37.8028],
+["Olympiacos","Grecia","El Pireo",37.9475,23.6367],
+["Panathinaikos","Grecia","Atenas",37.9838,23.7275],
+["AEK Atenas","Grecia","Atenas",37.9838,23.7275],
+["FC Basilea","Suiza","Basilea",47.5596,7.5886],
+["Young Boys","Suiza","Berna",46.9480,7.4474],
+["Red Bull Salzburgo","Austria","Salzburgo",47.8095,13.0550],
+["Rapid Viena","Austria","Viena",48.2082,16.3738],
+["Malmö FF","Suecia","Malmö",55.6050,13.0038],
+["AIK","Suecia","Estocolmo",59.3293,18.0686],
+["Rosenborg","Noruega","Trondheim",63.4305,10.3951],
+["FC Copenhague","Dinamarca","Copenhague",55.6761,12.5683],
+["Brøndby IF","Dinamarca","Brøndby",55.6415,12.4258],
+["HJK Helsinki","Finlandia","Helsinki",60.1699,24.9384],
+["Legia Varsovia","Polonia","Varsovia",52.2297,21.0122],
+["Lech Poznan","Polonia","Poznan",52.4064,16.9252],
+["Sparta Praga","Chequia","Praga",50.0755,14.4378],
+["Slavia Praga","Chequia","Praga",50.0755,14.4378],
+["Dinamo Zagreb","Croacia","Zagreb",45.8150,15.9819],
+["Estrella Roja de Belgrado","Serbia","Belgrado",44.7866,20.4489],
+["Partizán de Belgrado","Serbia","Belgrado",44.7866,20.4489],
+["FCSB","Rumania","Bucarest",44.4268,26.1025],
+["Ferencváros","Hungría","Budapest",47.4979,19.0402],
+["Flamengo","Brasil","Río de Janeiro",-22.9068,-43.1729],
+["Fluminense","Brasil","Río de Janeiro",-22.9068,-43.1729],
+["Botafogo","Brasil","Río de Janeiro",-22.9068,-43.1729],
+["Vasco da Gama","Brasil","Río de Janeiro",-22.9068,-43.1729],
+["Corinthians","Brasil","São Paulo",-23.5505,-46.6333],
+["Palmeiras","Brasil","São Paulo",-23.5505,-46.6333],
+["São Paulo FC","Brasil","São Paulo",-23.5505,-46.6333],
+["Santos FC","Brasil","Santos",-23.9608,-46.3339],
+["Grêmio","Brasil","Porto Alegre",-30.0346,-51.2177],
+["Internacional","Brasil","Porto Alegre",-30.0346,-51.2177],
+["Cruzeiro","Brasil","Belo Horizonte",-19.9167,-43.9345],
+["Atlético Mineiro","Brasil","Belo Horizonte",-19.9167,-43.9345],
+["Bahia","Brasil","Salvador",-12.9777,-38.5016],
+["Boca Juniors","Argentina","Buenos Aires",-34.6037,-58.3816],
+["River Plate","Argentina","Buenos Aires",-34.6037,-58.3816],
+["San Lorenzo","Argentina","Buenos Aires",-34.6037,-58.3816],
+["Vélez Sarsfield","Argentina","Buenos Aires",-34.6037,-58.3816],
+["Racing Club","Argentina","Avellaneda",-34.6667,-58.3667],
+["Independiente","Argentina","Avellaneda",-34.6667,-58.3667],
+["Estudiantes de La Plata","Argentina","La Plata",-34.9215,-57.9545],
+["Newell's Old Boys","Argentina","Rosario",-32.9468,-60.6393],
+["Rosario Central","Argentina","Rosario",-32.9468,-60.6393],
+["Peñarol","Uruguay","Montevideo",-34.9011,-56.1645],
+["Nacional","Uruguay","Montevideo",-34.9011,-56.1645],
+["Colo-Colo","Chile","Santiago",-33.4489,-70.6693],
+["Universidad de Chile","Chile","Santiago",-33.4489,-70.6693],
+["Club Olimpia","Paraguay","Asunción",-25.2637,-57.5759],
+["Atlético Nacional","Colombia","Medellín",6.2442,-75.5812],
+["Millonarios","Colombia","Bogotá",4.7110,-74.0721],
+["América de Cali","Colombia","Cali",3.4516,-76.5320],
+["Barcelona SC","Ecuador","Guayaquil",-2.1894,-79.8891],
+["LDU de Quito","Ecuador","Quito",-0.1807,-78.4678],
+["Universitario de Deportes","Perú","Lima",-12.0464,-77.0428],
+["Alianza Lima","Perú","Lima",-12.0464,-77.0428],
+["LA Galaxy","Estados Unidos","Los Ángeles",34.0522,-118.2437],
+["Los Angeles FC","Estados Unidos","Los Ángeles",34.0522,-118.2437],
+["Inter Miami CF","Estados Unidos","Miami",25.7617,-80.1918],
+["Seattle Sounders","Estados Unidos","Seattle",47.6062,-122.3321],
+["New York City FC","Estados Unidos","Nueva York",40.7128,-74.0060],
+["Atlanta United","Estados Unidos","Atlanta",33.7490,-84.3880],
+["Club América","México","Ciudad de México",19.4326,-99.1332],
+["Cruz Azul","México","Ciudad de México",19.4326,-99.1332],
+["Chivas Guadalajara","México","Guadalajara",20.6597,-103.3496],
+["Tigres UANL","México","Monterrey",25.6866,-100.3161],
+["Monterrey","México","Monterrey",25.6866,-100.3161],
+["Toronto FC","Canadá","Toronto",43.6511,-79.3832],
+["Al Ahly","Egipto","El Cairo",30.0444,31.2357],
+["Zamalek","Egipto","El Cairo",30.0444,31.2357],
+["Raja de Casablanca","Marruecos","Casablanca",33.5731,-7.5898],
+["Wydad de Casablanca","Marruecos","Casablanca",33.5731,-7.5898],
+["Kaizer Chiefs","Sudáfrica","Johannesburgo",-26.2041,28.0473],
+["Orlando Pirates","Sudáfrica","Johannesburgo",-26.2041,28.0473],
+["Espérance de Túnez","Túnez","Túnez",36.8065,10.1815],
+["CR Belouizdad","Argelia","Argel",36.7538,3.0588],
+["Enyimba","Nigeria","Aba",5.1167,7.3667],
+["Asante Kotoko","Ghana","Kumasi",6.6885,-1.6244],
+["Kashima Antlers","Japón","Kashima",35.9678,140.6455],
+["Urawa Red Diamonds","Japón","Saitama",35.8617,139.6455],
+["Yokohama F. Marinos","Japón","Yokohama",35.4437,139.6380],
+["Vissel Kobe","Japón","Kobe",34.6901,135.1955],
+["Jeonbuk Hyundai Motors","Corea del Sur","Jeonju",35.8242,127.1480],
+["FC Seoul","Corea del Sur","Seúl",37.5665,126.9780],
+["Shanghai Port","China","Shanghái",31.2304,121.4737],
+["Guangzhou FC","China","Cantón",23.1291,113.2644],
+["Beijing Guoan","China","Pekín",39.9042,116.4074],
+["Al Hilal","Arabia Saudita","Riad",24.7136,46.6753],
+["Al Nassr","Arabia Saudita","Riad",24.7136,46.6753],
+["Al Ittihad","Arabia Saudita","Jeda",21.4858,39.1925],
+["Al Ahli Jeddah","Arabia Saudita","Jeda",21.4858,39.1925],
+["Al Sadd","Catar","Doha",25.2854,51.5310],
+["Al Ain FC","Emiratos Árabes Unidos","Al Ain",24.1917,55.7602],
+["Persépolis","Irán","Teherán",35.6892,51.3890],
+["Esteghlal","Irán","Teherán",35.6892,51.3890],
+["Mohun Bagan","India","Calcuta",22.5726,88.3639],
+["Mumbai City FC","India","Bombay",19.0760,72.8777],
+["Sydney FC","Australia","Sídney",-33.8688,151.2093],
+["Melbourne Victory","Australia","Melbourne",-37.8136,144.9631],
+["Persija Jakarta","Indonesia","Yakarta",-6.2088,106.8456],
+["Buriram United","Tailandia","Buriram",14.9930,103.1029]
+];
+
+const FLAGS = {
+"Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+"Escocia":"🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+"España":"🇪🇸","Italia":"🇮🇹","Alemania":"🇩🇪","Francia":"🇫🇷","Portugal":"🇵🇹",
+"Países Bajos":"🇳🇱","Bélgica":"🇧🇪","Turquía":"🇹🇷","Rusia":"🇷🇺","Ucrania":"🇺🇦",
+"Grecia":"🇬🇷","Suiza":"🇨🇭","Austria":"🇦🇹","Suecia":"🇸🇪","Noruega":"🇳🇴",
+"Dinamarca":"🇩🇰","Finlandia":"🇫🇮","Polonia":"🇵🇱","Chequia":"🇨🇿","Croacia":"🇭🇷",
+"Serbia":"🇷🇸","Rumania":"🇷🇴","Hungría":"🇭🇺","Brasil":"🇧🇷","Argentina":"🇦🇷",
+"Uruguay":"🇺🇾","Chile":"🇨🇱","Paraguay":"🇵🇾","Colombia":"🇨🇴","Ecuador":"🇪🇨",
+"Perú":"🇵🇪","Estados Unidos":"🇺🇸","México":"🇲🇽","Canadá":"🇨🇦","Egipto":"🇪🇬",
+"Marruecos":"🇲🇦","Sudáfrica":"🇿🇦","Túnez":"🇹🇳","Argelia":"🇩🇿","Nigeria":"🇳🇬",
+"Ghana":"🇬🇭","Japón":"🇯🇵","Corea del Sur":"🇰🇷","China":"🇨🇳","Arabia Saudita":"🇸🇦",
+"Catar":"🇶🇦","Emiratos Árabes Unidos":"🇦🇪","Irán":"🇮🇷","India":"🇮🇳","Australia":"🇦🇺",
+"Indonesia":"🇮🇩","Tailandia":"🇹🇭"
+};
+
+const CLUBS = CLUBS_RAW.map(function(r){ return {name:r[0], country:r[1], city:r[2], lat:r[3], lon:r[4]}; });
+
+/* ---------- Utility ---------- */
+const STOP = new Set(["FC","CF","SC","AC","CD","SE","EC","AFC","SK","FK","KV","VFB","VFL","1.FC","UANL","CR","RB"]);
+function initialsOf(name){
+  const tokens = name.split(/[\s.]+/).filter(t=>t && !STOP.has(t.toUpperCase()));
+  const use = tokens.length ? tokens : name.split(/\s+/);
+  if(use.length===1) return use[0].slice(0,2).toUpperCase();
+  return (use[0][0]+use[1][0]).toUpperCase();
+}
+function hashHue(str){
+  let h=0;
+  for(let i=0;i<str.length;i++) h=(h*31+str.charCodeAt(i))>>>0;
+  return h%360;
+}
+function badgeStyle(name){
+  const hue = hashHue(name);
+  return "background:linear-gradient(155deg, hsl("+hue+" 78% 52%), hsl("+((hue+40)%360)+" 70% 38%));";
+}
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function seedFromStr(str){
+  let h=1779033703;
+  for(let i=0;i<str.length;i++){ h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h<<13 | h>>>19; }
+  return h>>>0;
+}
+function pickN(rand, n){
+  const idx = CLUBS.map((_,i)=>i);
+  for(let i=idx.length-1;i>0;i--){
+    const j = Math.floor(rand()*(i+1));
+    [idx[i],idx[j]]=[idx[j],idx[i]];
+  }
+  return idx.slice(0,n).map(i=>CLUBS[i]);
+}
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function haversineKm(lat1,lon1,lat2,lon2){
+  const R=6371, toRad=Math.PI/180;
+  const dLat=(lat2-lat1)*toRad, dLon=(lon2-lon1)*toRad;
+  const a=Math.sin(dLat/2)**2 + Math.cos(lat1*toRad)*Math.cos(lat2*toRad)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function scoreForDistance(km){
+  if(km < 20) return 5000;
+  const pts = Math.round(5000*Math.exp(-km/1900));
+  return Math.max(0, Math.min(5000, pts));
+}
+function fmtKm(km){
+  return km < 10 ? km.toFixed(1)+" km" : Math.round(km).toLocaleString("es")+" km";
+}
+
+/* ---------- Storage ---------- */
+const STORE_KEY = "clubtap_v1";
+function loadStore(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {streak:0, best:0, played:0, lastDailyDate:null, lastDailyScore:null, lastDailyRounds:null};
+}
+function saveStore(s){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }catch(e){}
+}
+let store = loadStore();
+
+/* ---------- Three.js globe ---------- */
+const canvas = document.getElementById("globeCanvas");
+const renderer = new THREE.WebGLRenderer({canvas:canvas, antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060a18);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+let zoomDist = 3.1;
+camera.position.set(0,0,zoomDist);
+camera.lookAt(0,0,0);
+
+const globeGroup = new THREE.Group();
+scene.add(globeGroup);
+
+const texLoader = new THREE.TextureLoader();
+const earthTex = texLoader.load("earth.jpg");
+earthTex.anisotropy = 4;
+
+const globeMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 64, 64),
+  new THREE.MeshBasicMaterial({map:earthTex})
+);
+globeGroup.add(globeMesh);
+
+const atmosphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1.035, 48, 48),
+  new THREE.MeshBasicMaterial({color:0x2fd18a, transparent:true, opacity:0.10, side:THREE.BackSide})
+);
+scene.add(atmosphere);
+
+const gridMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(1.001, 32, 24),
+  new THREE.MeshBasicMaterial({color:0x2fd18a, wireframe:true, transparent:true, opacity:0.05})
+);
+globeGroup.add(gridMesh);
+
+// starfield
+(function(){
+  const starGeo = new THREE.BufferGeometry();
+  const N = 2200;
+  const pos = new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const r = 30 + Math.random()*40;
+    const theta = Math.random()*Math.PI*2;
+    const phi = Math.acos(2*Math.random()-1);
+    pos[i*3] = r*Math.sin(phi)*Math.cos(theta);
+    pos[i*3+1] = r*Math.sin(phi)*Math.sin(theta);
+    pos[i*3+2] = r*Math.cos(phi);
+  }
+  starGeo.setAttribute("position", new THREE.BufferAttribute(pos,3));
+  const starMat = new THREE.PointsMaterial({color:0xffffff, size:0.09, sizeAttenuation:true, transparent:true, opacity:0.8});
+  scene.add(new THREE.Points(starGeo, starMat));
+})();
+
+function latLonToVector3(lat, lon, radius){
+  const phi = (90-lat)*Math.PI/180;
+  const theta = (lon+180)*Math.PI/180;
+  return new THREE.Vector3(
+    -radius*Math.sin(phi)*Math.cos(theta),
+    radius*Math.cos(phi),
+    radius*Math.sin(phi)*Math.sin(theta)
+  );
+}
+function vector3ToLatLon(v){
+  const r = v.length();
+  const phi = Math.acos(THREE.MathUtils.clamp(v.y/r,-1,1));
+  let theta = Math.atan2(v.z, -v.x);
+  let lon = theta*180/Math.PI - 180;
+  lon = ((lon+180) % 360 + 360) % 360 - 180;
+  const lat = 90 - phi*180/Math.PI;
+  return {lat:lat, lon:lon};
+}
+
+function makeMarker(color, size){
+  const g = new THREE.Group();
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(size, 16,16), new THREE.MeshBasicMaterial({color:color}));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(size*1.9, size*2.6, 24), new THREE.MeshBasicMaterial({color:color, side:THREE.DoubleSide, transparent:true, opacity:0.55}));
+  g.add(dot); g.add(ring);
+  g.userData.ring = ring;
+  return g;
+}
+const guessMarker = makeMarker(0xff9d4d, 0.017);
+const actualMarker = makeMarker(0x22c17c, 0.017);
+guessMarker.visible = false; actualMarker.visible = false;
+globeGroup.add(guessMarker); globeGroup.add(actualMarker);
+
+let arcLine = null;
+function setArc(latlonA, latlonB){
+  if(arcLine){ globeGroup.remove(arcLine); arcLine.geometry.dispose(); arcLine.material.dispose(); arcLine=null; }
+  const A = latLonToVector3(latlonA.lat, latlonA.lon, 1).normalize();
+  const B = latLonToVector3(latlonB.lat, latlonB.lon, 1).normalize();
+  const omega = Math.acos(THREE.MathUtils.clamp(A.dot(B), -1, 1));
+  const pts = [];
+  const steps = 48;
+  for(let i=0;i<=steps;i++){
+    const t = i/steps;
+    let p;
+    if(omega < 1e-6){ p = A.clone(); }
+    else {
+      const s1 = Math.sin((1-t)*omega)/Math.sin(omega);
+      const s2 = Math.sin(t*omega)/Math.sin(omega);
+      p = new THREE.Vector3(
+        A.x*s1 + B.x*s2,
+        A.y*s1 + B.y*s2,
+        A.z*s1 + B.z*s2
+      );
+    }
+    const lift = 1.008 + 0.05*Math.sin(t*Math.PI);
+    p.normalize().multiplyScalar(lift);
+    pts.push(p);
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.65});
+  arcLine = new THREE.Line(geo, mat);
+  globeGroup.add(arcLine);
+}
+function clearArc(){
+  if(arcLine){ globeGroup.remove(arcLine); arcLine.geometry.dispose(); arcLine.material.dispose(); arcLine=null; }
+}
+
+/* rotation + zoom control */
+let rotY = 0.4, rotX = -0.25;
+globeGroup.rotation.order = "YXZ";
+let autoRotate = true;
+let dragging = false, dragMoved = false, lastX=0, lastY=0, downX=0, downY=0, downTime=0;
+const ROT_SPEED = 3.2;
+
+function applyRotation(){
+  globeGroup.rotation.y = rotY;
+  globeGroup.rotation.x = THREE.MathUtils.clamp(rotX, -1.45, 1.45);
+}
+applyRotation();
+
+function ndcFromEvent(clientX, clientY){
+  const rect = canvas.getBoundingClientRect();
+  return new THREE.Vector2(
+    ((clientX-rect.left)/rect.width)*2-1,
+    -((clientY-rect.top)/rect.height)*2+1
+  );
+}
+const raycaster = new THREE.Raycaster();
+let guessSet = false;
+let inputEnabled = false;
+
+function tryPlaceGuess(clientX, clientY){
+  if(!inputEnabled) return;
+  const ndc = ndcFromEvent(clientX, clientY);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObject(globeMesh);
+  if(hits.length===0) return;
+  const local = globeMesh.worldToLocal(hits[0].point.clone());
+  const ll = vector3ToLatLon(local);
+  currentGuess = ll;
+  guessMarker.position.copy(local.clone().normalize().multiplyScalar(1.006));
+  guessMarker.visible = true;
+  guessSet = true;
+  confirmBtn.disabled = false;
+  clueHint.textContent = "Listo. Tocá de nuevo para ajustar, o confirmá tu respuesta.";
+  clueHint.classList.add("confirmed");
+}
+
+canvas.addEventListener("pointerdown", function(e){
+  dragging = true; dragMoved = false;
+  lastX = downX = e.clientX; lastY = downY = e.clientY;
+  downTime = performance.now();
+  autoRotate = false;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", function(e){
+  if(!dragging) return;
+  const dx = e.clientX-lastX, dy = e.clientY-lastY;
+  if(Math.abs(e.clientX-downX) > 5 || Math.abs(e.clientY-downY) > 5) dragMoved = true;
+  const w = canvas.clientWidth || 1;
+  rotY += (dx/w)*ROT_SPEED;
+  rotX += (dy/w)*ROT_SPEED;
+  applyRotation();
+  lastX = e.clientX; lastY = e.clientY;
+});
+canvas.addEventListener("pointerup", function(e){
+  dragging = false;
+  const dt = performance.now()-downTime;
+  if(!dragMoved && dt < 600){
+    tryPlaceGuess(e.clientX, e.clientY);
+  }
+});
+canvas.addEventListener("pointercancel", function(){ dragging = false; });
+
+canvas.addEventListener("wheel", function(e){
+  e.preventDefault();
+  zoomDist = THREE.MathUtils.clamp(zoomDist + e.deltaY*0.0018*zoomDist, 1.55, 5.5);
+}, {passive:false});
+
+let pinchDist = null;
+canvas.addEventListener("touchstart", function(e){
+  if(e.touches.length===2){
+    pinchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+  }
+}, {passive:true});
+canvas.addEventListener("touchmove", function(e){
+  if(e.touches.length===2 && pinchDist!=null){
+    const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    const ratio = pinchDist/d;
+    zoomDist = THREE.MathUtils.clamp(zoomDist*ratio, 1.55, 5.5);
+    pinchDist = d;
+  }
+}, {passive:true});
+canvas.addEventListener("touchend", function(e){
+  if(e.touches.length<2) pinchDist = null;
+});
+
+document.getElementById("zoomIn").addEventListener("click", ()=>{ zoomDist = THREE.MathUtils.clamp(zoomDist-0.5,1.55,5.5); });
+document.getElementById("zoomOut").addEventListener("click", ()=>{ zoomDist = THREE.MathUtils.clamp(zoomDist+0.5,1.55,5.5); });
+
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+
+function animate(){
+  requestAnimationFrame(animate);
+  if(autoRotate){ rotY += 0.0016; applyRotation(); }
+  camera.position.set(0,0,zoomDist);
+  camera.lookAt(0,0,0);
+  const pulse = 0.55+0.45*Math.sin(performance.now()*0.004);
+  if(guessMarker.visible) guessMarker.userData.ring.material.opacity = 0.25+0.4*pulse;
+  if(actualMarker.visible) actualMarker.userData.ring.material.opacity = 0.25+0.4*pulse;
+  renderer.render(scene, camera);
+}
+animate();
+
+/* ---------- Game state / UI wiring ---------- */
+const startScreen = document.getElementById("startScreen");
+const hud = document.getElementById("hud");
+const zoomControls = document.getElementById("zoomControls");
+const clueCard = document.getElementById("clueCard");
+const clueBadge = document.getElementById("clueBadge");
+const clueName = document.getElementById("clueName");
+const clueCountry = document.getElementById("clueCountry");
+const clueHint = document.getElementById("clueHint");
+const confirmBtn = document.getElementById("confirmBtn");
+const resultPanel = document.getElementById("resultPanel");
+const resName = document.getElementById("resName");
+const resPts = document.getElementById("resPts");
+const resDist = document.getElementById("resDist");
+const resMeter = document.getElementById("resMeter");
+const nextBtn = document.getElementById("nextBtn");
+const summaryScreen = document.getElementById("summaryScreen");
+const roundList = document.getElementById("roundList");
+const totalScoreEl = document.getElementById("totalScore");
+const rankLine = document.getElementById("rankLine");
+const summaryTitle = document.getElementById("summaryTitle");
+const shareBtn = document.getElementById("shareBtn");
+const shareBox = document.getElementById("shareBox");
+const shareText = document.getElementById("shareText");
+const copyBtn = document.getElementById("copyBtn");
+const roundNowEl = document.getElementById("roundNow");
+const roundTotalEl = document.getElementById("roundTotal");
+const scoreNowEl = document.getElementById("scoreNow");
+const toastEl = document.getElementById("toast");
+
+let session = null; // {mode, rounds:[club], idx, results:[], total}
+let currentGuess = null;
+
+function toast(msg, ms){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>toastEl.classList.remove("show"), ms||2600);
+}
+
+function refreshMenuStats(){
+  document.getElementById("streakStat").textContent = store.streak||0;
+  document.getElementById("bestStat").textContent = store.best||0;
+  document.getElementById("playedStat").textContent = store.played||0;
+  const dailyBtn = document.getElementById("dailyBtn");
+  const doneMsg = document.getElementById("dailyDoneMsg");
+  if(store.lastDailyDate === todayStr()){
+    dailyBtn.textContent = "Ver resultado de hoy";
+    doneMsg.hidden = false;
+    doneMsg.textContent = "Ya jugaste hoy — puntaje: " + store.lastDailyScore;
+  } else {
+    dailyBtn.textContent = "Jugar el reto de hoy";
+    doneMsg.hidden = true;
+  }
+}
+refreshMenuStats();
+
+function startSession(mode){
+  let clubs;
+  if(mode==="daily"){
+    const rand = mulberry32(seedFromStr("clubtap-"+todayStr()));
+    clubs = pickN(rand, 5);
+  } else {
+    clubs = pickN(Math.random, 5);
+  }
+  session = {mode:mode, rounds:clubs, idx:0, results:[], total:0};
+  startScreen.style.display = "none";
+  hud.hidden = false;
+  zoomControls.hidden = false;
+  roundTotalEl.textContent = clubs.length;
+  toast("Arrastrá para girar el globo, hacé zoom con la rueda o pellizcando, y tocá para marcar tu respuesta.", 4200);
+  loadRound();
+}
+
+function loadRound(){
+  const club = session.rounds[session.idx];
+  currentGuess = null;
+  guessSet = false;
+  guessMarker.visible = false;
+  actualMarker.visible = false;
+  clearArc();
+  confirmBtn.disabled = true;
+  clueHint.textContent = "Arrastrá para girar el globo y tocá para marcar tu respuesta";
+  clueHint.classList.remove("confirmed");
+  clueName.textContent = club.name;
+  clueCountry.textContent = (FLAGS[club.country]||"") + "  " + club.country;
+  clueBadge.textContent = initialsOf(club.name);
+  clueBadge.setAttribute("style", badgeStyle(club.name));
+  roundNowEl.textContent = session.idx+1;
+  scoreNowEl.textContent = session.total;
+  resultPanel.hidden = true;
+  clueCard.hidden = false;
+  inputEnabled = true;
+}
+
+confirmBtn.addEventListener("click", function(){
+  if(!guessSet || !currentGuess) return;
+  inputEnabled = false;
+  const club = session.rounds[session.idx];
+  const dist = haversineKm(currentGuess.lat, currentGuess.lon, club.lat, club.lon);
+  const pts = scoreForDistance(dist);
+  session.results.push({club:club, dist:dist, pts:pts});
+  session.total += pts;
+
+  const actualLocal = latLonToVector3(club.lat, club.lon, 1);
+  actualMarker.position.copy(actualLocal.clone().normalize().multiplyScalar(1.006));
+  actualMarker.visible = true;
+  setArc(currentGuess, {lat:club.lat, lon:club.lon});
+
+  clueCard.hidden = true;
+  resName.textContent = club.name + " · " + club.city;
+  resPts.textContent = pts;
+  resDist.innerHTML = "Quedaste a <b>"+fmtKm(dist)+"</b> de "+club.city;
+  resMeter.style.width = Math.max(4, (pts/5000*100)) + "%";
+  resultPanel.hidden = false;
+  scoreNowEl.textContent = session.total;
+});
+
+nextBtn.addEventListener("click", function(){
+  session.idx++;
+  if(session.idx >= session.rounds.length){
+    finishSession();
+  } else {
+    loadRound();
+  }
+});
+
+function rankFor(total){
+  if(total>=22000) return "Fuera de serie ⭐⭐⭐⭐⭐";
+  if(total>=18000) return "Crack mundial ⭐⭐⭐⭐";
+  if(total>=13000) return "Titular indiscutido ⭐⭐⭐";
+  if(total>=8000) return "Promesa de cantera ⭐⭐";
+  if(total>=3000) return "Hincha con ganas ⭐";
+  return "De vuelta al banco de suplentes";
+}
+
+const SPANISH_MONTHS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+function formatDateEs(dateStr){
+  const [y,m,d] = dateStr.split("-").map(Number);
+  return d+" de "+SPANISH_MONTHS[m-1];
+}
+function puzzleNumber(dateStr){
+  const epoch = Date.UTC(2026,0,1);
+  const [y,m,d] = dateStr.split("-").map(Number);
+  const t = Date.UTC(y,m-1,d);
+  return Math.max(1, Math.round((t-epoch)/86400000) + 1);
+}
+function tierEmoji(pct){
+  if(pct>=95) return "🎯";
+  if(pct>=80) return "🌟";
+  if(pct>=60) return "😁";
+  if(pct>=40) return "🤗";
+  if(pct>=20) return "😅";
+  return "🥶";
+}
+function buildShareText(summary){
+  const header = summary.mode==="daily"
+    ? "ClubTap #"+puzzleNumber(summary.dateStr)+" · "+formatDateEs(summary.dateStr)
+    : "ClubTap · Modo libre";
+  const roundLine = summary.results.map(function(r){
+    const pct = Math.round(r.pts/5000*100);
+    return pct+tierEmoji(pct);
+  }).join(" ");
+  const normalized = Math.round(summary.total/25000*1000);
+  return [header, roundLine, "Puntaje final: "+normalized+"/1000", location.href].join("\n");
+}
+
+let lastSummary = null;
+
+function renderSummary(results, total, title, mode, dateStr){
+  summaryTitle.textContent = title;
+  totalScoreEl.textContent = total;
+  rankLine.textContent = rankFor(total);
+  roundList.innerHTML = "";
+  results.forEach(function(r, i){
+    const row = document.createElement("div");
+    row.className = "round-row";
+    row.innerHTML =
+      '<div class="round-badge" style="'+badgeStyle(r.club.name)+'">'+initialsOf(r.club.name)+'</div>'+
+      '<div class="round-info"><div class="rn">'+(i+1)+'. '+r.club.name+'</div>'+
+      '<div class="rd">'+fmtKm(r.dist)+' de '+r.club.city+'</div></div>'+
+      '<div class="round-pts">'+r.pts+'</div>';
+    roundList.appendChild(row);
+  });
+  lastSummary = {results:results, total:total, mode:mode, dateStr:dateStr||todayStr()};
+  shareBox.hidden = true;
+}
+
+function finishSession(){
+  hud.hidden = true;
+  zoomControls.hidden = true;
+  clueCard.hidden = true;
+  resultPanel.hidden = true;
+  inputEnabled = false;
+
+  store.played = (store.played||0)+1;
+  if(session.total > (store.best||0)) store.best = session.total;
+
+  if(session.mode==="daily"){
+    const today = todayStr();
+    if(store.lastDailyDate !== today){
+      const y = new Date(); y.setDate(y.getDate()-1);
+      const yStr = y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0");
+      store.streak = (store.lastDailyDate === yStr) ? (store.streak||0)+1 : 1;
+      store.lastDailyDate = today;
+      store.lastDailyScore = session.total;
+      store.lastDailyRounds = session.results.map(r=>({n:r.club.name, c:r.club.city, d:Math.round(r.dist), p:r.pts}));
+    }
+  }
+  saveStore(store);
+  refreshMenuStats();
+
+  renderSummary(session.results, session.total, session.mode==="daily" ? "Reto diario" : "Modo libre", session.mode, todayStr());
+  document.getElementById("playAgainBtn").textContent = "Jugar modo libre";
+  summaryScreen.hidden = false;
+}
+
+document.getElementById("dailyBtn").addEventListener("click", function(){
+  if(store.lastDailyDate === todayStr() && store.lastDailyRounds){
+    const results = store.lastDailyRounds.map(r=>({club:{name:r.n, city:r.c}, dist:r.d, pts:r.p}));
+    renderSummary(results, store.lastDailyScore, "Reto diario de hoy", "daily", store.lastDailyDate);
+    document.getElementById("playAgainBtn").textContent = "Jugar modo libre";
+    summaryScreen.hidden = false;
+    return;
+  }
+  startSession("daily");
+});
+document.getElementById("freeBtn").addEventListener("click", function(){ startSession("free"); });
+document.getElementById("playAgainBtn").addEventListener("click", function(){
+  summaryScreen.hidden = true;
+  startSession("free");
+});
+document.getElementById("backMenuBtn").addEventListener("click", function(){
+  summaryScreen.hidden = true;
+  startScreen.style.display = "flex";
+  refreshMenuStats();
+});
+
+function fallbackCopy(text){
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  }catch(e){ return false; }
+}
+function copyToClipboard(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text).then(()=>true).catch(()=>fallbackCopy(text));
+  }
+  return Promise.resolve(fallbackCopy(text));
+}
+
+shareBtn.addEventListener("click", function(){
+  if(!lastSummary) return;
+  shareText.value = buildShareText(lastSummary);
+  shareBox.hidden = !shareBox.hidden;
+  if(!shareBox.hidden){ shareText.focus(); shareText.select(); }
+});
+copyBtn.addEventListener("click", function(){
+  copyToClipboard(shareText.value).then(function(ok){
+    toast(ok ? "¡Copiado! Pegalo donde quieras compartirlo." : "No se pudo copiar solo — seleccioná el texto y copialo con Ctrl/Cmd+C.");
+  });
+});
+
+})();
+</script>
+</body>
+</html>
